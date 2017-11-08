@@ -78,7 +78,8 @@ class CreditControlLine(models.Model):
                               required=True, readonly=True)
 
     balance_due = fields.Float(string='Due balance', required=True,
-                               readonly=True)
+                               readonly=True, compute='_compute_balance_due',
+                               store=True)
 
     mail_message_id = fields.Many2one('mail.mail', string='Sent Email',
                                       readonly=True)
@@ -124,6 +125,13 @@ class CreditControlLine(models.Model):
 
     run_id = fields.Many2one(comodel_name='credit.control.run',
                              string='Source')
+
+    manual_followup = fields.Boolean(string='Manual Followup')
+
+    @api.depends('invoice_id.residual')
+    def _compute_balance_due(self):
+        for line in self:
+            line.balance_due = line.invoice_id.residual
 
     @api.model
     def _prepare_from_move_line(self, move_line, level, controlling_date,
@@ -216,3 +224,18 @@ class CreditControlLine(models.Model):
                 )
 
         return super(CreditControlLine, self).unlink()
+
+    @api.multi
+    def write(self, values):
+        res = super(CreditControlLine, self).write(values)
+        if 'manual_followup' in values:
+            self.partner_id.write({
+                'manual_followup': values.get('manual_followup'),
+            })
+        return res
+
+    @api.model
+    def create(self, values):
+        line = super(CreditControlLine, self).create(values)
+        line.manual_followup = line.partner_id.manual_followup
+        return line
